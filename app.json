@@ -4,12 +4,12 @@
     "slug": "quran-digital-baehaqi",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo-app.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "qurandigital",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo-app.png",
       "resizeMode": "contain",
       "backgroundColor": "#0F3D3E"
     },
@@ -19,12 +19,16 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo-app.png",
         "backgroundColor": "#0F3D3E"
       },
       "package": "com.baehaqi.qurandigital",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -36,7 +40,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/logo-app.png",
           "color": "#0F3D3E"
         }
       ],
@@ -49,6 +53,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "802e00d5-eba7-4ccc-8c91-167dbf35a8a2"
+      }
     }
   }
 }

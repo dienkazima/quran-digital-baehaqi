@@ -50,14 +50,22 @@ const hitungWaktuSholat = (lat: number, lon: number): SholatData[] => {
   ];
 };
 
+import { Alert } from 'react-native';
+
 export const getSholatInfo = async (): Promise<SholatState> => {
   try {
-    // 1. Minta Izin
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    
+    const cached = await loadJson<UserLocation | null>('user_location', null);
+
+    // 1. Cek Izin
+    const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
+    let status = existingStatus;
+
+    if (existingStatus === 'undetermined') {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      status = permission.status;
+    }
+
     if (status !== 'granted') {
-      // Jika ditolak, gunakan cache atau default
-      const cached = await loadJson<UserLocation | null>('user_location', null);
       if (cached) {
         return {
           locationText: `${cached.city}, ${cached.region}`,
@@ -70,25 +78,48 @@ export const getSholatInfo = async (): Promise<SholatState> => {
         locationText: DEFAULT_LOC_TEXT,
         sholatData: hitungWaktuSholat(DEFAULT_LAT, DEFAULT_LON),
         isLoading: false,
-        error: 'Aktifkan lokasi untuk melihat jadwal akurat',
+        error: 'Aktifkan izin lokasi untuk jadwal akurat',
       };
     }
 
-    // 2. Dapatkan Koordinat dengan cepat
-    let location = await Location.getLastKnownPositionAsync();
+    // 2. Cek apakah GPS HP sedang dinyalakan
+    const gpsEnabled = await Location.hasServicesEnabledAsync();
     
-    // Jika tidak ada cache posisi di HP, baru cari paksa (tapi dengan akurasi rendah biar cepat)
+    if (!gpsEnabled) {
+      // Tampilkan dialog sesuai permintaan
+      Alert.alert(
+        'GPS Tidak Aktif',
+        'Aktifkan GPS untuk mendapatkan jadwal sholat sesuai lokasi Anda',
+        [{ text: 'OK' }]
+      );
+
+      if (cached) {
+        return {
+          locationText: `${cached.city}, ${cached.region}`,
+          sholatData: hitungWaktuSholat(cached.latitude, cached.longitude),
+          isLoading: false,
+          error: null, // Pakai cache dengan mulus
+        };
+      } else {
+        return {
+          locationText: DEFAULT_LOC_TEXT,
+          sholatData: hitungWaktuSholat(DEFAULT_LAT, DEFAULT_LON),
+          isLoading: false,
+          error: 'Aktifkan GPS HP Anda untuk mendeteksi lokasi awal',
+        };
+      }
+    }
+
+    // 3. Dapatkan Koordinat dengan cepat karena Izin dan GPS sudah aktif
+    let location = await Location.getLastKnownPositionAsync();
     if (!location) {
-      location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+      location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     }
     const { latitude, longitude } = location.coords;
 
-    // Cek cache daerah agar tidak selalu memanggil API Geocoding (yang bikin lambat)
-    const cached = await loadJson<UserLocation | null>('user_location', null);
     let city = 'Lokasi Tidak Diketahui';
     let region = '';
 
-    // Jika koordinatnya masih mirip dengan cache sebelumnya (geser dikit), pakai nama kota dari cache
     if (
       cached && 
       Math.abs(cached.latitude - latitude) < 0.05 && 
@@ -97,7 +128,7 @@ export const getSholatInfo = async (): Promise<SholatState> => {
       city = cached.city;
       region = cached.region;
     } else {
-      // 3. Reverse Geocoding (hanya jika tempatnya berpindah jauh / baru)
+      // Reverse Geocoding
       const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
       if (geocode.length > 0) {
         const g = geocode[0];
@@ -107,29 +138,23 @@ export const getSholatInfo = async (): Promise<SholatState> => {
     }
     
     const locationText = region ? `${city}, ${region}` : city;
-
-    // Simpan ke cache
     await saveJson('user_location', { city, region, latitude, longitude });
-
-    // 4. Hitung Waktu
-    const sholatData = hitungWaktuSholat(latitude, longitude);
 
     return {
       locationText,
-      sholatData,
+      sholatData: hitungWaktuSholat(latitude, longitude),
       isLoading: false,
       error: null,
     };
 
   } catch (error) {
-    // Fallback error (misal GPS mati/timeout)
     const cached = await loadJson<UserLocation | null>('user_location', null);
     if (cached) {
       return {
         locationText: `${cached.city}, ${cached.region}`,
         sholatData: hitungWaktuSholat(cached.latitude, cached.longitude),
         isLoading: false,
-        error: 'Gagal mendeteksi lokasi baru',
+        error: null,
       };
     }
     return {
@@ -142,15 +167,80 @@ export const getSholatInfo = async (): Promise<SholatState> => {
 };
 
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+
+// Konfigurasi tampilan notifikasi saat aplikasi sedang dibuka
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export const setupAdzanNotifications = async (sholatData: SholatData[], isEnabled: boolean) => {
-  // Peringatan: 
-  // Expo Go versi terbaru (SDK 53+) secara ketat memblokir package 'expo-notifications'.
-  // Jika kode ini diaktifkan (bahkan dengan require sekalipun), Metro Bundler akan 
-  // tetap memindai dan memasukkannya, sehingga menyebabkan "Bundling failed / Unexpected undefined".
-  // Untuk saat ini, fitur notifikasi hanya bisa dites menggunakan build APK asli (EAS Build).
-  
-  if (isEnabled) {
-    console.log("Tombol notifikasi ditekan. (Simulasi: Notifikasi dimatikan sementara di Expo Go).");
+  // 1. Batalkan semua notifikasi lama terlebih dahulu
+  await Notifications.cancelAllScheduledNotificationsAsync();
+
+  if (!isEnabled || sholatData.length === 0) {
+    console.log('[Notif Adzan] Notifikasi dinonaktifkan, semua jadwal dibatalkan.');
+    return;
   }
+
+  // 2. Minta izin notifikasi dari pengguna
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== 'granted') {
+    console.warn('[Notif Adzan] Izin notifikasi ditolak oleh pengguna.');
+    return;
+  }
+
+  // Khusus Android: buat channel notifikasi
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('adzan', {
+      name: 'Pengingat Waktu Sholat',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+    });
+  }
+
+  // 3. Jadwalkan notifikasi untuk setiap waktu sholat hari ini
+  const now = new Date();
+  let scheduledCount = 0;
+
+  for (const sholat of sholatData) {
+    const [jam, menit] = sholat.waktu.split(':').map(Number);
+    const waktuSholat = new Date();
+    waktuSholat.setHours(jam, menit, 0, 0);
+
+    // Hanya jadwalkan jika waktunya belum lewat
+    if (waktuSholat > now) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `🕌 Waktu ${sholat.nama}`,
+          body: `Telah masuk waktu ${sholat.nama} pukul ${sholat.waktu}. Segera tunaikan sholat.`,
+          sound: 'default',
+          data: { sholat: sholat.nama },
+          ...(Platform.OS === 'android' && { channelId: 'adzan' }),
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: waktuSholat,
+        },
+      });
+      scheduledCount++;
+      console.log(`[Notif Adzan] ✅ Dijadwalkan: ${sholat.nama} pukul ${sholat.waktu}`);
+    } else {
+      console.log(`[Notif Adzan] ⏩ Dilewati (sudah lewat): ${sholat.nama} pukul ${sholat.waktu}`);
+    }
+  }
+
+  console.log(`[Notif Adzan] Total ${scheduledCount} notifikasi berhasil dijadwalkan untuk hari ini.`);
 };

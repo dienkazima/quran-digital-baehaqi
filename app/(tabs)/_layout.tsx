@@ -44,6 +44,7 @@ export default function TabLayout() {
       <Tabs.Screen name="home" options={{ title: 'Beranda', tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} /> }} />
       <Tabs.Screen name="quran" options={{ title: 'Al-Qur\'an', tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'book' : 'book-outline'} focused={focused} /> }} />
       <Tabs.Screen name="doa" options={{ title: 'Doa', tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'hand-left' : 'hand-left-outline'} focused={focused} /> }} />
+      <Tabs.Screen name="kalender" options={{ title: 'Kalender', tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'calendar' : 'calendar-outline'} focused={focused} /> }} />
       <Tabs.Screen name="amal" options={{ title: 'Amal', tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'heart' : 'heart-outline'} focused={focused} /> }} />
     </Tabs>
   );

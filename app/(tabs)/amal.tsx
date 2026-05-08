@@ -1,12 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Animated, Share, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { Colors, Fonts, FontSize, Spacing, Radius, Shadow } from '@/constants/theme';
 import { kirimFatihah, getAmalStats } from '@/services/amal';
+import { supabase } from '@/services/supabase';
 
 const AL_FATIHAH = [
   'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
@@ -25,14 +27,44 @@ export default function AmalScreen() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
 
+  const loadStats = useCallback(async () => {
+    const s = await getAmalStats();
+    setTotal(s.total);
+  }, []);
+
+  // Update total setiap kali halaman dibuka
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [loadStats])
+  );
+
   useEffect(() => {
-    getAmalStats().then(s => setTotal(s.total));
+    // Sinkronisasi Realtime dengan Supabase
+    const channel = supabase
+      .channel('amal_updates')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'almarhum', filter: 'id=eq.1' },
+        (payload) => {
+          if (payload.new && typeof payload.new.jumlah_doa === 'number') {
+            setTotal(payload.new.jumlah_doa);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleKirim = async () => {
     if (loading) return;
-    setLoading(true);
+    
+    // Tampilkan doa secara instan
     setShowFatihah(true);
+    setLoading(true);
 
     Animated.sequence([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: 100, useNativeDriver: true }),
@@ -48,10 +80,22 @@ export default function AmalScreen() {
       { iterations: 3 }
     ).start();
 
-    const newTotal = await kirimFatihah();
-    setTotal(newTotal);
-    setLoading(false);
-    Alert.alert('Jazakumullah Khayran 🤲', 'Al-Fatihah telah dikirim.\nSemoga menjadi cahaya untuk Almarhum Baehaqi.');
+    try {
+      // Optimistic update: langsung tambah 1 agar UI terasa sangat cepat
+      setTotal(prev => prev + 1);
+      
+      const newTotal = await kirimFatihah();
+      // Update dengan data valid dari server
+      setTotal(newTotal);
+      
+      Alert.alert('Jazakumullah Khayran 🤲', 'Al-Fatihah telah dikirim.\nSemoga menjadi cahaya untuk Almarhum Baehaqi.');
+    } catch (error) {
+      // Revert optimistic update jika gagal
+      setTotal(prev => prev - 1);
+      Alert.alert('Gagal Mengirim', 'Pastikan koneksi internet Anda aktif.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleShare = () => {
@@ -69,7 +113,7 @@ export default function AmalScreen() {
         <Ionicons name="heart" size={32} color="#fff" />
         <Text style={styles.headerTitle}>Amal Jariyah</Text>
         <Text style={styles.headerSub}>untuk Almarhum Baehaqi</Text>
-        <Text style={styles.headerSub2}>Dusun Gejome</Text>
+        <Text style={styles.headerSub2}>Dusun Jorong</Text>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>

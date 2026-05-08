@@ -110,7 +110,7 @@ export default function HomeScreen() {
         {/* Last Read */}
         <TouchableOpacity
           style={styles.lastReadCard}
-          onPress={() => lastRead && router.push(`/quran/${lastRead.surahId}`)}
+          onPress={() => lastRead && router.push(`/quran/${lastRead.surahId}?ayat=${lastRead.ayat}`)}
           activeOpacity={0.85}
         >
           <LinearGradient colors={[Colors.primary, Colors.primaryLight]} style={styles.lastReadGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>

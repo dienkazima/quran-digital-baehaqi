@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Fonts, FontSize } from '@/constants/theme';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -47,17 +47,17 @@ export default function CoverScreen() {
 
       <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         
-        {/* Ikon Kaca (Glassmorphism) Qaf */}
-        <View style={styles.glassIcon}>
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.15)', 'rgba(255, 255, 255, 0.05)']}
-            style={StyleSheet.absoluteFillObject}
+        {/* Logo App */}
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../assets/logo-app.png')} 
+            style={styles.logoImage} 
+            resizeMode="cover"
           />
-          <Text style={styles.arabicLetter}>ق</Text>
         </View>
 
-        {/* Teks Utama */}
-        <Text style={styles.title}>Qur'an Digital Baehaqi</Text>
+        {/* Teks Utama (Disembunyikan karena logo sudah memiliki teks) */}
+        {/* <Text style={styles.title}>Qur'an Digital Baehaqi</Text> */}
         
         {/* Subteks */}
         <Text style={styles.subtitle}>
@@ -107,24 +107,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-  glassIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 35,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 50,
+  logoContainer: {
+    width: 260,
+    height: 260,
+    borderRadius: 50, // Membuat sudut membulat agar halus menyatu dengan tema
+    marginBottom: 30,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    backgroundColor: '#0F3D3E', 
   },
-  arabicLetter: {
-    fontFamily: 'Amiri-Bold',
-    fontSize: 60,
-    color: '#D4AF37',
-    lineHeight: 80,
-    marginTop: 10,
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   title: {
     fontFamily: Fonts.bold,

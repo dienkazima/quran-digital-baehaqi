@@ -15,7 +15,7 @@ export default function TentangScreen() {
           <Ionicons name="moon" size={48} color={Colors.secondary} />
         </View>
         <Text style={styles.nama}>Almarhum Baehaqi</Text>
-        <Text style={styles.asal}>Dusun Gejome</Text>
+        <Text style={styles.asal}>Dusun Jorong</Text>
         <Text style={styles.rahmat}>رَحِمَهُ اللَّهُ</Text>
       </LinearGradient>
 
@@ -23,7 +23,7 @@ export default function TentangScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>💚 Tentang Aplikasi Ini</Text>
           <Text style={styles.cardText}>
-            Aplikasi ini dibuat sebagai bentuk cinta, doa, dan penghormatan kepada Almarhum Baehaqi dari Dusun Gejome.{'\n\n'}
+            Aplikasi ini dibuat sebagai bentuk cinta, doa, dan penghormatan kepada Almarhum Baehaqi dan seluruh warga Dusun Gejome yang telah mendahului kita.{'\n\n'}
             Semoga setiap huruf Al-Qur'an yang dibaca melalui aplikasi ini menjadi amal jariyah yang terus mengalir, menerangi beliau di alam sana.
           </Text>
         </View>

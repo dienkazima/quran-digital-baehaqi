@@ -12,8 +12,9 @@ import { getAyat, getSurahList, type Ayat, type Surah } from '@/services/quran';
 import { loadJson, saveJson, StorageKeys } from '@/services/storage';
 
 export default function SurahDetailScreen() {
-  const { surahId } = useLocalSearchParams<{ surahId: string }>();
+  const { surahId, ayat: ayatParam } = useLocalSearchParams<{ surahId: string; ayat?: string }>();
   const id = Number(surahId);
+  const scrollToAyat = ayatParam ? Number(ayatParam) : null;
 
   const [surah, setSurah] = useState<Surah | null>(null);
   const [ayats, setAyats] = useState<Ayat[]>([]);
@@ -21,10 +22,20 @@ export default function SurahDetailScreen() {
   const [bookmarks, setBookmarks] = useState<Set<number>>(new Set());
   const [playingId, setPlayingId] = useState<number | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const flatListRef = useRef<FlatList<Ayat>>(null);
 
   useEffect(() => {
+    // Inisialisasi mode audio
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+    }).catch(() => {});
     loadData();
-    return () => { soundRef.current?.unloadAsync(); };
+    return () => {
+      // Bersihkan audio saat meninggalkan halaman
+      soundRef.current?.unloadAsync().catch(() => {});
+    };
   }, [id]);
 
   const loadData = async () => {
@@ -38,6 +49,16 @@ export default function SurahDetailScreen() {
       setSurah(list.find(s => s.id === id) ?? null);
       setAyats(verses);
       setBookmarks(new Set(bm));
+
+      // Scroll ke ayat yang di-bookmark setelah data terload
+      if (scrollToAyat && verses.length > 0) {
+        const idx = verses.findIndex(v => v.nomor === scrollToAyat);
+        if (idx > 0) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.1 });
+          }, 600);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -57,22 +78,43 @@ export default function SurahDetailScreen() {
   };
 
   const playAudio = async (ayat: Ayat) => {
+    // Cek apakah ayat yang sama sedang diputar (untuk toggle stop)
+    const isSameAyat = playingId === ayat.nomor;
+
+    // Bersihkan audio yang sedang berjalan
+    if (soundRef.current) {
+      try { await soundRef.current.unloadAsync(); } catch {}
+      soundRef.current = null;
+    }
+    setPlayingId(null);
+
+    // Jika tap ayat yang sama → stop (toggle)
+    if (isSameAyat) return;
+
+    // Putar audio baru
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-      if (playingId === ayat.nomor) { setPlayingId(null); return; }
       setPlayingId(ayat.nomor);
-      await saveLastRead(ayat.nomor);
-      const { sound } = await Audio.Sound.createAsync({ uri: ayat.audio_url }, { shouldPlay: true });
+      saveLastRead(ayat.nomor);
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: ayat.audio_url },
+        { shouldPlay: true }
+      );
       soundRef.current = sound;
-      sound.setOnPlaybackStatusUpdate(status => {
-        if (status.isLoaded && status.didJustFinish) setPlayingId(null);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingId(null);
+          sound.unloadAsync().catch(() => {});
+          soundRef.current = null;
+        }
       });
-    } catch {
+    } catch (e) {
       setPlayingId(null);
-      Alert.alert('Audio tidak tersedia', 'Coba koneksi internet Anda.');
+      Alert.alert(
+        'Audio tidak tersedia',
+        'Pastikan koneksi internet Anda aktif, lalu coba lagi.'
+      );
     }
   };
 
@@ -100,8 +142,10 @@ export default function SurahDetailScreen() {
           </View>
         </View>
         <Text style={styles.arab}>{item.arab}</Text>
+        {item.latin ? <Text style={styles.latin}>{item.latin}</Text> : null}
         <View style={styles.divider} />
         <Text style={styles.terjemahan}>{item.terjemahan}</Text>
+        {item.footnotes ? <Text style={styles.footnote}>{item.footnotes}</Text> : null}
       </View>
     );
   };
@@ -122,16 +166,23 @@ export default function SurahDetailScreen() {
         <View style={styles.headerInfo}>
           <Text style={styles.surahLatin}>{surah?.nama_latin}</Text>
           <Text style={styles.surahArab}>{surah?.nama_arab}</Text>
-          <Text style={styles.surahMeta}>{surah?.arti} · {surah?.jumlah_ayat} Ayat · {surah?.tempat === 'makkah' ? 'Makkiyah' : 'Madaniyah'}</Text>
+          <Text style={styles.surahMeta}>{surah?.arti} · {surah?.jumlah_ayat} Ayat · {surah?.tempat}</Text>
         </View>
       </LinearGradient>
 
       <FlatList
+        ref={flatListRef}
         data={ayats}
         keyExtractor={(item) => String(item.nomor)}
         renderItem={renderAyat}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        onScrollToIndexFailed={({ index }) => {
+          // Fallback jika index tidak langsung bisa discroll
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.1 });
+          }, 300);
+        }}
         ListHeaderComponent={
           id !== 1 && id !== 9 ? (
             <View style={styles.basmallahCard}>
@@ -166,6 +217,8 @@ const styles = StyleSheet.create({
   ayatActions: { flexDirection: 'row', gap: 4 },
   actionBtn: { padding: 6 },
   arab: { fontFamily: 'Amiri-Regular', fontSize: 26, color: Colors.text, textAlign: 'right', lineHeight: 52, marginBottom: Spacing.sm },
+  latin: { fontFamily: Fonts.regular, fontSize: FontSize.xs, color: Colors.textSecondary, fontStyle: 'italic', marginBottom: Spacing.sm, lineHeight: 18 },
   divider: { height: 1, backgroundColor: Colors.divider, marginBottom: Spacing.sm },
   terjemahan: { fontFamily: Fonts.regular, fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 22 },
+  footnote: { fontFamily: Fonts.regular, fontSize: 11, color: Colors.textLight, fontStyle: 'italic', marginTop: Spacing.sm, lineHeight: 17, borderLeftWidth: 2, borderLeftColor: Colors.secondary, paddingLeft: 8 },
 });
