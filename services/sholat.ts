@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { Coordinates, CalculationMethod, PrayerTimes } from 'adhan';
 import { loadJson, saveJson, StorageKeys } from './storage';
+import { Alert, Platform } from 'react-native';
 
 export interface SholatData {
   nama: string;
@@ -50,19 +51,22 @@ const hitungWaktuSholat = (lat: number, lon: number): SholatData[] => {
   ];
 };
 
-import { Alert } from 'react-native';
 
-export const getSholatInfo = async (): Promise<SholatState> => {
+export const getSholatInfo = async (forceRequest: boolean = false): Promise<SholatState> => {
   try {
-    const cached = await loadJson<UserLocation | null>('user_location', null);
+    const cached = await loadJson<UserLocation | null>(StorageKeys.USER_LOCATION, null);
 
     // 1. Cek Izin
-    const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
-    let status = existingStatus;
+    const permInfo = await Location.getForegroundPermissionsAsync();
+    let status = permInfo.status;
 
-    if (existingStatus === 'undetermined') {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      status = permission.status;
+    if (status !== 'granted') {
+      const askedBefore = await loadJson<boolean>(StorageKeys.LOCATION_PERMISSION_REQUESTED, false);
+      if (forceRequest || !askedBefore) {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        status = permission.status;
+        await saveJson(StorageKeys.LOCATION_PERMISSION_REQUESTED, true);
+      }
     }
 
     if (status !== 'granted') {
@@ -83,30 +87,41 @@ export const getSholatInfo = async (): Promise<SholatState> => {
     }
 
     // 2. Cek apakah GPS HP sedang dinyalakan
-    const gpsEnabled = await Location.hasServicesEnabledAsync();
+    let gpsEnabled = await Location.hasServicesEnabledAsync();
     
     if (!gpsEnabled) {
-      // Tampilkan dialog sesuai permintaan
-      Alert.alert(
-        'GPS Tidak Aktif',
-        'Aktifkan GPS untuk mendapatkan jadwal sholat sesuai lokasi Anda',
-        [{ text: 'OK' }]
-      );
+      if (Platform.OS === 'android') {
+        try {
+          await Location.enableNetworkProviderAsync();
+          gpsEnabled = await Location.hasServicesEnabledAsync();
+        } catch (e) {
+          console.warn('Gagal mengaktifkan provider:', e);
+        }
+      }
+      
+      if (!gpsEnabled) {
+        // Tampilkan dialog sesuai permintaan
+        Alert.alert(
+          'GPS Tidak Aktif',
+          'Aktifkan GPS untuk mendapatkan jadwal sholat sesuai lokasi Anda',
+          [{ text: 'OK' }]
+        );
 
-      if (cached) {
-        return {
-          locationText: `${cached.city}, ${cached.region}`,
-          sholatData: hitungWaktuSholat(cached.latitude, cached.longitude),
-          isLoading: false,
-          error: null, // Pakai cache dengan mulus
-        };
-      } else {
-        return {
-          locationText: DEFAULT_LOC_TEXT,
-          sholatData: hitungWaktuSholat(DEFAULT_LAT, DEFAULT_LON),
-          isLoading: false,
-          error: 'Aktifkan GPS HP Anda untuk mendeteksi lokasi awal',
-        };
+        if (cached) {
+          return {
+            locationText: `${cached.city}, ${cached.region}`,
+            sholatData: hitungWaktuSholat(cached.latitude, cached.longitude),
+            isLoading: false,
+            error: null, // Pakai cache dengan mulus
+          };
+        } else {
+          return {
+            locationText: DEFAULT_LOC_TEXT,
+            sholatData: hitungWaktuSholat(DEFAULT_LAT, DEFAULT_LON),
+            isLoading: false,
+            error: 'Aktifkan GPS HP Anda untuk mendeteksi lokasi awal',
+          };
+        }
       }
     }
 
@@ -138,7 +153,7 @@ export const getSholatInfo = async (): Promise<SholatState> => {
     }
     
     const locationText = region ? `${city}, ${region}` : city;
-    await saveJson('user_location', { city, region, latitude, longitude });
+    await saveJson(StorageKeys.USER_LOCATION, { city, region, latitude, longitude });
 
     return {
       locationText,
@@ -148,7 +163,7 @@ export const getSholatInfo = async (): Promise<SholatState> => {
     };
 
   } catch (error) {
-    const cached = await loadJson<UserLocation | null>('user_location', null);
+    const cached = await loadJson<UserLocation | null>(StorageKeys.USER_LOCATION, null);
     if (cached) {
       return {
         locationText: `${cached.city}, ${cached.region}`,
@@ -166,7 +181,7 @@ export const getSholatInfo = async (): Promise<SholatState> => {
   }
 };
 
-import { Platform } from 'react-native';
+
 import * as Notifications from 'expo-notifications';
 
 // Konfigurasi tampilan notifikasi saat aplikasi sedang dibuka

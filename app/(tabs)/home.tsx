@@ -39,13 +39,13 @@ export default function HomeScreen() {
     error: null,
   });
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceRequest: boolean = false) => {
     setLoading(true);
     const lr = await loadJson<LastRead | null>(StorageKeys.LAST_READ, null);
     setLastRead(lr);
     
     // Ambil Data Sholat
-    const sData = await getSholatInfo();
+    const sData = await getSholatInfo(forceRequest);
     setSholatState(sData);
     
     setLoading(false);
@@ -74,9 +74,10 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>{getGreeting()} 👋</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
               <Ionicons name="location" size={14} color={Colors.secondary} />
-              <Text style={[styles.subGreeting, { marginTop: 0, marginLeft: 4 }]}>
-                {sholatState.locationText}
-              </Text>
+              <Text style={[styles.subGreeting, { marginTop: 0, marginLeft: 8 }]}> {sholatState.locationText} </Text>
+              <TouchableOpacity onPress={() => loadData(true)} style={{ marginLeft: 8 }} disabled={loading}>
+                <Ionicons name={loading ? 'refresh-circle' : 'refresh'} size={16} color={Colors.secondary} />
+              </TouchableOpacity>
             </View>
           </View>
           <TouchableOpacity onPress={() => router.push('/tentang')} style={styles.aboutBtn}>
@@ -105,7 +106,7 @@ export default function HomeScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => loadData(true)} tintColor={Colors.primary} />}
       >
         {/* Last Read */}
         <TouchableOpacity

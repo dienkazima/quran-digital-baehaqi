@@ -1,35 +1,95 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, ActivityIndicator, Alert, Linking, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import { saveJson, loadJson, StorageKeys } from '@/services/storage';
 
 export default function LokasiScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [locationText, setLocationText] = useState('Kota Jakarta Pusat, DKI Jakarta');
+  const awaitingSettingsRef = useRef(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = await loadJson<any>(StorageKeys.USER_LOCATION, null);
+        if (cached && cached.city) {
+          setLocationText(cached.region ? `${cached.city}, ${cached.region}` : cached.city);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, []);
 
   const requestLocationPermission = async () => {
     setLoading(true);
     setErrorMsg('');
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      await saveJson(StorageKeys.LOCATION_PERMISSION_REQUESTED, true);
+
       if (status !== 'granted') {
         setErrorMsg('Izin lokasi ditolak. Anda masih bisa melanjutkan tanpa fitur lokasi otomatis.');
         setLoading(false);
         return;
       }
 
-      // Opsional: Dapatkan lokasi saat ini untuk memastikan berfungsi
-      // let location = await Location.getCurrentPositionAsync({});
-      
-      // Jika berhasil, arahkan ke beranda atau halaman sebelumnya
+      // Pastikan layanan lokasi (GPS) aktif di perangkat
+      let servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        if (Platform.OS === 'android') {
+          try {
+            await Location.enableNetworkProviderAsync();
+            servicesEnabled = await Location.hasServicesEnabledAsync();
+          } catch (e) {
+            console.warn('Gagal mengaktifkan provider:', e);
+          }
+        }
+        
+        if (!servicesEnabled) {
+          setErrorMsg('Aktifkan GPS untuk mendapatkan jadwal sholat sesuai lokasi Anda');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Ambil lokasi terbaru
+      let location = await Location.getLastKnownPositionAsync();
+      if (!location) {
+        location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      }
+
+      const { latitude, longitude } = location.coords;
+
+      // Reverse geocoding untuk mendapatkan nama kota/region
+      let city = 'Lokasi Tidak Diketahui';
+      let region = '';
+      try {
+        const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geocode.length > 0) {
+          const g = geocode[0];
+          city = g.city || g.subregion || g.district || g.name || city;
+          region = g.region || g.country || '';
+        }
+      } catch (e) {
+        console.warn('reverse geocode failed', e);
+      }
+
+      // Simpan lokasi ke storage sebagai lokasi awal
+      await saveJson(StorageKeys.USER_LOCATION, { city, region, latitude, longitude });
+      setLocationText(region ? `${city}, ${region}` : city);
+
+      // Kembali ke beranda — Home akan memanggil ulang getSholatInfo pada fokus
       router.replace('/(tabs)/home');
     } catch (error) {
-      setErrorMsg('Terjadi kesalahan saat meminta izin lokasi.');
+      setErrorMsg('Terjadi kesalahan saat mengambil lokasi. Pastikan GPS aktif.');
     } finally {
       setLoading(false);
     }
@@ -56,7 +116,7 @@ export default function LokasiScreen() {
         {/* Indikator Lokasi (Sesuai Gambar) */}
         <View style={styles.locationBadge}>
           <Ionicons name="location" size={18} color="#E53935" />
-          <Text style={styles.locationBadgeText}>Kota Jakarta Pusat, DKI Jakarta</Text>
+          <Text style={styles.locationBadgeText}>{locationText}</Text>
         </View>
 
         {/* Deskripsi */}

@@ -35,4 +35,6 @@ export const StorageKeys = {
   FONT_SIZE: 'qdb.fontSize',
   DARK_MODE: 'qdb.darkMode',
   SYNC_CODE: 'qdb.syncCode',
+  USER_LOCATION: 'user_location',
+  LOCATION_PERMISSION_REQUESTED: 'location_permission_requested',
 };
