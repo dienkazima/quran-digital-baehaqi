@@ -41,7 +41,11 @@
         "expo-notifications",
         {
           "icon": "./assets/logo-app.png",
-          "color": "#0F3D3E"
+          "color": "#0F3D3E",
+          "sounds": [
+            "./assets/azan.wav",
+            "./assets/azan_subuh.wav"
+          ]
         }
       ],
       [

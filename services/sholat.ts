@@ -56,6 +56,16 @@ export const getSholatInfo = async (forceRequest: boolean = false): Promise<Shol
   try {
     const cached = await loadJson<UserLocation | null>(StorageKeys.USER_LOCATION, null);
 
+    // JIKA TIDAK REFRESH MANUAL & CACHE ADA -> LANGSUNG PAKAI CACHE (SESUAI REQUEST)
+    if (!forceRequest && cached) {
+      return {
+        locationText: cached.region ? `${cached.city}, ${cached.region}` : cached.city,
+        sholatData: hitungWaktuSholat(cached.latitude, cached.longitude),
+        isLoading: false,
+        error: null,
+      };
+    }
+
     // 1. Cek Izin
     const permInfo = await Location.getForegroundPermissionsAsync();
     let status = permInfo.status;
@@ -135,20 +145,28 @@ export const getSholatInfo = async (forceRequest: boolean = false): Promise<Shol
     let city = 'Lokasi Tidak Diketahui';
     let region = '';
 
-    if (
-      cached && 
-      Math.abs(cached.latitude - latitude) < 0.05 && 
-      Math.abs(cached.longitude - longitude) < 0.05
-    ) {
-      city = cached.city;
-      region = cached.region;
-    } else {
-      // Reverse Geocoding
-      const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (geocode.length > 0) {
-        const g = geocode[0];
-        city = g.city || g.subregion || g.district || city;
-        region = g.region || g.country || '';
+    try {
+      if (
+        cached && 
+        Math.abs(cached.latitude - latitude) < 0.05 && 
+        Math.abs(cached.longitude - longitude) < 0.05
+      ) {
+        city = cached.city;
+        region = cached.region;
+      } else {
+        // Reverse Geocoding
+        const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geocode.length > 0) {
+          const g = geocode[0];
+          city = g.city || g.subregion || g.district || city;
+          region = g.region || g.country || '';
+        }
+      }
+    } catch (error) {
+      // Jika gagal reverse geocode (misal saat offline), gunakan cache jika ada
+      if (cached) {
+        city = cached.city;
+        region = cached.region;
       }
     }
     
@@ -218,10 +236,16 @@ export const setupAdzanNotifications = async (sholatData: SholatData[], isEnable
 
   // Khusus Android: buat channel notifikasi
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('adzan', {
+    await Notifications.setNotificationChannelAsync('adzan_biasa_v2', {
       name: 'Pengingat Waktu Sholat',
       importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
+      sound: 'azan.wav',
+      vibrationPattern: [0, 250, 250, 250],
+    });
+    await Notifications.setNotificationChannelAsync('adzan_subuh_v2', {
+      name: 'Pengingat Waktu Subuh',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'azan_subuh.wav',
       vibrationPattern: [0, 250, 250, 250],
     });
   }
@@ -237,17 +261,21 @@ export const setupAdzanNotifications = async (sholatData: SholatData[], isEnable
 
     // Hanya jadwalkan jika waktunya belum lewat
     if (waktuSholat > now) {
+      const isSubuh = sholat.nama.toLowerCase() === 'subuh';
+      const soundFile = isSubuh ? 'azan_subuh.wav' : 'azan.wav';
+      const channelId = isSubuh ? 'adzan_subuh_v2' : 'adzan_biasa_v2';
+
       await Notifications.scheduleNotificationAsync({
         content: {
           title: `🕌 Waktu ${sholat.nama}`,
           body: `Telah masuk waktu ${sholat.nama} pukul ${sholat.waktu}. Segera tunaikan sholat.`,
-          sound: 'default',
+          sound: soundFile,
           data: { sholat: sholat.nama },
-          ...(Platform.OS === 'android' && { channelId: 'adzan' }),
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: waktuSholat,
+          ...(Platform.OS === 'android' && { channelId }),
         },
       });
       scheduledCount++;
