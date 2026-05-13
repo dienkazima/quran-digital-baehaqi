@@ -135,11 +135,20 @@ export const getSholatInfo = async (forceRequest: boolean = false): Promise<Shol
       }
     }
 
-    // 3. Dapatkan Koordinat dengan cepat karena Izin dan GPS sudah aktif
-    let location = await Location.getLastKnownPositionAsync();
-    if (!location) {
-      location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    // 3. Dapatkan Koordinat
+    let location;
+    
+    if (forceRequest) {
+      // Refresh manual: paksa ambil lokasi dari jaringan (Lowest accuracy = sangat cepat, cukup untuk tahu Kota)
+      location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+    } else {
+      // Otomatis: coba ambil cache riwayat HP. Jika tidak ada, ambil dari jaringan.
+      location = await Location.getLastKnownPositionAsync();
+      if (!location) {
+        location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+      }
     }
+    
     const { latitude, longitude } = location.coords;
 
     let city = 'Lokasi Tidak Diketahui';
@@ -236,16 +245,16 @@ export const setupAdzanNotifications = async (sholatData: SholatData[], isEnable
 
   // Khusus Android: buat channel notifikasi
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('adzan_biasa_v2', {
+    await Notifications.setNotificationChannelAsync('adzan_biasa_v3', {
       name: 'Pengingat Waktu Sholat',
       importance: Notifications.AndroidImportance.HIGH,
-      sound: 'azan.wav',
+      sound: 'azan',
       vibrationPattern: [0, 250, 250, 250],
     });
-    await Notifications.setNotificationChannelAsync('adzan_subuh_v2', {
+    await Notifications.setNotificationChannelAsync('adzan_subuh_v3', {
       name: 'Pengingat Waktu Subuh',
       importance: Notifications.AndroidImportance.HIGH,
-      sound: 'azan_subuh.wav',
+      sound: 'azan_subuh',
       vibrationPattern: [0, 250, 250, 250],
     });
   }
@@ -262,8 +271,8 @@ export const setupAdzanNotifications = async (sholatData: SholatData[], isEnable
     // Hanya jadwalkan jika waktunya belum lewat
     if (waktuSholat > now) {
       const isSubuh = sholat.nama.toLowerCase() === 'subuh';
-      const soundFile = isSubuh ? 'azan_subuh.wav' : 'azan.wav';
-      const channelId = isSubuh ? 'adzan_subuh_v2' : 'adzan_biasa_v2';
+      const soundFile = isSubuh ? 'azan_subuh' : 'azan';
+      const channelId = isSubuh ? 'adzan_subuh_v3' : 'adzan_biasa_v3';
 
       await Notifications.scheduleNotificationAsync({
         content: {
